@@ -863,7 +863,7 @@ func init() {
 			"CREATE UNIQUE INDEX ` + "`" + `__pb_users_auth__tokenKey_idx` + "`" + ` ON ` + "`" + `users` + "`" + ` (` + "`" + `tokenKey` + "`" + `)"
 		],
 		"system": false,
-		"authRule": "verified=true",
+		"authRule": "",
 		"manageRule": null
 	},
 	{

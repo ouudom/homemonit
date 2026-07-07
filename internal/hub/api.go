@@ -118,6 +118,8 @@ func (h *Hub) CreateFirstUser(e *core.RequestEvent) error {
 	user := core.NewRecord(collection)
 	user.SetEmail(data.Email)
 	user.SetPassword(data.Password)
+	user.Set("verified", true)
+	user.Set("emailVisibility", true)
 	user.Set("role", "admin") // First user is automatically admin
 
 	if err := e.App.Save(user); err != nil {
