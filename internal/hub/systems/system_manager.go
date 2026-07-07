@@ -7,8 +7,6 @@ import (
 
 	"github.com/henrygd/beszel/internal/hub/ws"
 	"github.com/henrygd/beszel/internal/entities/system"
-	"github.com/henrygd/beszel/internal/common"
-
 	"github.com/blang/semver"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/store"
