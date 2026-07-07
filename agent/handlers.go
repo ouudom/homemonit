@@ -1,15 +1,11 @@
 package agent
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/henrygd/beszel/internal/common"
-	"github.com/henrygd/beszel/internal/entities/smart"
-
-	"log/slog"
 )
 
 // HandlerContext provides context for request handlers
@@ -47,10 +43,7 @@ func NewHandlerRegistry() *HandlerRegistry {
 
 	registry.Register(common.GetData, &GetDataHandler{})
 	registry.Register(common.CheckFingerprint, &CheckFingerprintHandler{})
-	registry.Register(common.GetContainerLogs, &GetContainerLogsHandler{})
-	registry.Register(common.GetContainerInfo, &GetContainerInfoHandler{})
-	registry.Register(common.GetSmartData, &GetSmartDataHandler{})
-	registry.Register(common.GetSystemdInfo, &GetSystemdInfoHandler{})
+	registry.Register(common.ContainerAction, &ContainerActionHandler{})
 
 	return registry
 }
@@ -72,9 +65,6 @@ func (hr *HandlerRegistry) Handle(hctx *HandlerContext) error {
 		return errors.New("hub not verified")
 	}
 
-	// Log handler execution for debugging
-	// slog.Debug("Executing handler", "action", hctx.Request.Action)
-
 	return handler.Handle(hctx)
 }
 
@@ -83,9 +73,6 @@ func (hr *HandlerRegistry) GetHandler(action common.WebSocketAction) (RequestHan
 	handler, exists := hr.handlers[action]
 	return handler, exists
 }
-
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
 
 // GetDataHandler handles system data requests
 type GetDataHandler struct{}
@@ -98,9 +85,6 @@ func (h *GetDataHandler) Handle(hctx *HandlerContext) error {
 	return hctx.SendResponse(sysStats, hctx.RequestID)
 }
 
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-
 // CheckFingerprintHandler handles authentication challenges
 type CheckFingerprintHandler struct{}
 
@@ -108,98 +92,16 @@ func (h *CheckFingerprintHandler) Handle(hctx *HandlerContext) error {
 	return hctx.Client.handleAuthChallenge(hctx.Request, hctx.RequestID)
 }
 
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
+type ContainerActionHandler struct{}
 
-// GetContainerLogsHandler handles container log requests
-type GetContainerLogsHandler struct{}
+func (h *ContainerActionHandler) Handle(hctx *HandlerContext) error {
+	var req common.ContainerActionRequest
+	_ = cbor.Unmarshal(hctx.Request.Data, &req)
 
-func (h *GetContainerLogsHandler) Handle(hctx *HandlerContext) error {
-	if hctx.Agent.dockerManager == nil {
-		return hctx.SendResponse("", hctx.RequestID)
-	}
-
-	var req common.ContainerLogsRequest
-	if err := cbor.Unmarshal(hctx.Request.Data, &req); err != nil {
-		return err
-	}
-
-	ctx := context.Background()
-	logContent, err := hctx.Agent.dockerManager.getLogs(ctx, req.ContainerID)
+	err := hctx.Agent.dockerManager.containerAction(req.ContainerID, req.Action)
+	var errMsg string
 	if err != nil {
-		return err
+		errMsg = err.Error()
 	}
-
-	return hctx.SendResponse(logContent, hctx.RequestID)
-}
-
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-
-// GetContainerInfoHandler handles container info requests
-type GetContainerInfoHandler struct{}
-
-func (h *GetContainerInfoHandler) Handle(hctx *HandlerContext) error {
-	if hctx.Agent.dockerManager == nil {
-		return hctx.SendResponse("", hctx.RequestID)
-	}
-
-	var req common.ContainerInfoRequest
-	if err := cbor.Unmarshal(hctx.Request.Data, &req); err != nil {
-		return err
-	}
-
-	ctx := context.Background()
-	info, err := hctx.Agent.dockerManager.getContainerInfo(ctx, req.ContainerID)
-	if err != nil {
-		return err
-	}
-
-	return hctx.SendResponse(string(info), hctx.RequestID)
-}
-
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-
-// GetSmartDataHandler handles SMART data requests
-type GetSmartDataHandler struct{}
-
-func (h *GetSmartDataHandler) Handle(hctx *HandlerContext) error {
-	if hctx.Agent.smartManager == nil {
-		// return empty map to indicate no data
-		return hctx.SendResponse(map[string]smart.SmartData{}, hctx.RequestID)
-	}
-	if err := hctx.Agent.smartManager.Refresh(false); err != nil {
-		slog.Debug("smart refresh failed", "err", err)
-	}
-	data := hctx.Agent.smartManager.GetCurrentData()
-	return hctx.SendResponse(data, hctx.RequestID)
-}
-
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-
-// GetSystemdInfoHandler handles detailed systemd service info requests
-type GetSystemdInfoHandler struct{}
-
-func (h *GetSystemdInfoHandler) Handle(hctx *HandlerContext) error {
-	if hctx.Agent.systemdManager == nil {
-		return errors.ErrUnsupported
-	}
-
-	var req common.SystemdInfoRequest
-	if err := cbor.Unmarshal(hctx.Request.Data, &req); err != nil {
-		return err
-	}
-	if req.ServiceName == "" {
-		return errors.New("service name is required")
-	}
-
-	details, err := hctx.Agent.systemdManager.getServiceDetails(req.ServiceName)
-	if err != nil {
-		return err
-	}
-
-	return hctx.SendResponse(details, hctx.RequestID)
+	return hctx.SendResponse(common.AgentResponse{Error: errMsg}, hctx.RequestID)
 }

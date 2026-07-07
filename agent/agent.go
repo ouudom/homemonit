@@ -1,7 +1,4 @@
 // Package agent implements the Beszel monitoring agent that collects and serves system metrics.
-//
-// The agent runs on monitored systems and communicates collected data
-// to the Beszel hub for centralized monitoring and alerting.
 package agent
 
 import (
@@ -10,16 +7,20 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gliderlabs/ssh"
 	"github.com/henrygd/beszel"
 	"github.com/henrygd/beszel/agent/deltatracker"
 	"github.com/henrygd/beszel/agent/utils"
 	"github.com/henrygd/beszel/internal/common"
 	"github.com/henrygd/beszel/internal/entities/system"
-	gossh "golang.org/x/crypto/ssh"
 )
 
 const defaultDataCacheTimeMs uint16 = 60_000
+
+// AgentOptions contains configuration options for starting the agent.
+type AgentOptions struct {
+	Addr    string // Network address or port (primarily for logging/compatibility)
+	Network string // Network type ("tcp" or "unix")
+}
 
 type Agent struct {
 	sync.Mutex                                                                      // Used to lock agent while collecting data
@@ -39,19 +40,13 @@ type Agent struct {
 	systemInfo                system.Info                                           // Host system info (dynamic)
 	systemDetails             system.Details                                        // Host system details (static, once-per-connection)
 	detailsDirty              bool                                                  // Whether system details have changed and need to be resent
-	gpuManager                *GPUManager                                           // Manages GPU data
 	cache                     *systemDataCache                                      // Cache for system stats based on cache time
 	connectionManager         *ConnectionManager                                    // Channel to signal connection events
 	handlerRegistry           *HandlerRegistry                                      // Registry for routing incoming messages
-	server                    *ssh.Server                                           // SSH server
 	dataDir                   string                                                // Directory for persisting data
-	keys                      []gossh.PublicKey                                     // SSH public keys
-	smartManager              *SmartManager                                         // Manages SMART data
-	systemdManager            *systemdManager                                       // Manages systemd services
 }
 
 // NewAgent creates a new agent with the given data directory for persisting data.
-// If the data directory is not set, it will attempt to find the optimal directory.
 func NewAgent(dataDir ...string) (agent *Agent, err error) {
 	agent = &Agent{
 		fsStats: make(map[string]*system.FsStats),
@@ -105,16 +100,6 @@ func NewAgent(dataDir ...string) (agent *Agent, err error) {
 	// initialize system info
 	agent.refreshSystemDetails()
 
-	// SMART_INTERVAL env var to update smart data at this interval
-	if smartIntervalEnv, exists := utils.GetEnv("SMART_INTERVAL"); exists {
-		if duration, err := time.ParseDuration(smartIntervalEnv); err == nil && duration > 0 {
-			agent.systemDetails.SmartInterval = duration
-			slog.Info("SMART_INTERVAL", "duration", duration)
-		} else {
-			slog.Warn("Invalid SMART_INTERVAL", "err", err)
-		}
-	}
-
 	// initialize connection manager
 	agent.connectionManager = newConnectionManager(agent)
 
@@ -126,22 +111,6 @@ func NewAgent(dataDir ...string) (agent *Agent, err error) {
 
 	// initialize net io stats
 	agent.initializeNetIoStats()
-
-	agent.systemdManager, err = newSystemdManager()
-	if err != nil {
-		slog.Debug("Systemd", "err", err)
-	}
-
-	agent.smartManager, err = NewSmartManager()
-	if err != nil {
-		slog.Debug("SMART", "err", err)
-	}
-
-	// initialize GPU manager
-	agent.gpuManager, err = NewGPUManager()
-	if err != nil {
-		slog.Debug("GPU", "err", err)
-	}
 
 	// if debugging, print stats
 	if agent.debug {
@@ -167,26 +136,12 @@ func (a *Agent) gatherStats(options common.DataRequestOptions) *system.CombinedD
 		Info:  a.systemInfo,
 	}
 
-	// slog.Info("System data", "data", data, "cacheTimeMs", cacheTimeMs)
-
 	if a.dockerManager != nil {
 		if containerStats, err := a.dockerManager.getDockerStats(cacheTimeMs); err == nil {
 			data.Containers = containerStats
 			slog.Debug("Containers", "data", data.Containers)
 		} else {
 			slog.Debug("Containers", "err", err)
-		}
-	}
-
-	// skip updating systemd services if cache time is not the default 60sec interval
-	if a.systemdManager != nil && cacheTimeMs == defaultDataCacheTimeMs {
-		totalCount := uint16(a.systemdManager.getServiceStatsCount())
-		if totalCount > 0 {
-			numFailed := a.systemdManager.getFailedServiceCount()
-			data.Info.Services = []uint16{totalCount, numFailed}
-		}
-		if a.systemdManager.hasFreshStats {
-			data.SystemdServices = a.systemdManager.getServiceStats(nil, false)
 		}
 	}
 
@@ -214,12 +169,7 @@ func (a *Agent) gatherStats(options common.DataRequestOptions) *system.CombinedD
 	return a.attachSystemDetails(data, cacheTimeMs, options.IncludeDetails)
 }
 
-// Start initializes and starts the agent with optional WebSocket connection
-func (a *Agent) Start(serverOptions ServerOptions) error {
-	a.keys = serverOptions.Keys
-	return a.connectionManager.Start(serverOptions)
-}
-
-func (a *Agent) getFingerprint() string {
-	return GetFingerprint(a.dataDir, a.systemDetails.Hostname, a.systemDetails.CpuModel)
+// Start initializes and starts the agent
+func (a *Agent) Start(opts AgentOptions) error {
+	return a.connectionManager.Start(opts)
 }

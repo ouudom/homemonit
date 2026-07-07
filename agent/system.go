@@ -12,7 +12,6 @@ import (
 	"github.com/henrygd/beszel"
 	"github.com/henrygd/beszel/agent/battery"
 	"github.com/henrygd/beszel/agent/utils"
-	"github.com/henrygd/beszel/agent/zfs"
 	"github.com/henrygd/beszel/internal/entities/container"
 	"github.com/henrygd/beszel/internal/entities/system"
 
@@ -98,13 +97,6 @@ func (a *Agent) refreshSystemDetails() {
 			a.systemDetails.MemoryTotal = v.Total
 		}
 	}
-
-	// zfs
-	if _, err := zfs.ARCSize(); err != nil {
-		slog.Debug("Not monitoring ZFS ARC", "err", err)
-	} else {
-		a.zfs = true
-	}
 }
 
 // attachSystemDetails returns details only for fresh default-interval responses.
@@ -178,24 +170,10 @@ func (a *Agent) getSystemStats(cacheTimeMs uint16) system.Stats {
 		if cacheBuff <= 0 {
 			cacheBuff = max(v.Total-v.Free-v.Used, 0)
 		}
-		// htop memory calculation overrides (likely outdated as of mid 2025)
+		// htop memory calculation overrides
 		if a.memCalc == "htop" {
-			// cacheBuff = v.Cached + v.Buffers - v.Shared
 			v.Used = v.Total - (v.Free + cacheBuff)
 			v.UsedPercent = float64(v.Used) / float64(v.Total) * 100.0
-		}
-		// if a.memCalc == "legacy" {
-		// 	v.Used = v.Total - v.Free - v.Buffers - v.Cached
-		// 	cacheBuff = v.Total - v.Free - v.Used
-		// 	v.UsedPercent = float64(v.Used) / float64(v.Total) * 100.0
-		// }
-		// subtract ZFS ARC size from used memory and add as its own category
-		if a.zfs {
-			if arcSize, _ := zfs.ARCSize(); arcSize > 0 && arcSize < v.Used {
-				v.Used = v.Used - arcSize
-				v.UsedPercent = float64(v.Used) / float64(v.Total) * 100.0
-				systemStats.MemZfsArc = utils.BytesToGigabytes(arcSize)
-			}
 		}
 		systemStats.Mem = utils.BytesToGigabytes(v.Total)
 		systemStats.MemBuffCache = utils.BytesToGigabytes(cacheBuff)
@@ -213,41 +191,7 @@ func (a *Agent) getSystemStats(cacheTimeMs uint16) system.Stats {
 	a.updateNetworkStats(cacheTimeMs, &systemStats)
 
 	// temperatures
-	// TODO: maybe refactor to methods on systemStats
 	a.updateTemperatures(&systemStats)
-
-	// GPU data
-	if a.gpuManager != nil {
-		// reset high gpu percent
-		a.systemInfo.GpuPct = 0
-		// get current GPU data
-		if gpuData := a.gpuManager.GetCurrentData(cacheTimeMs); len(gpuData) > 0 {
-			systemStats.GPUData = gpuData
-
-			// add temperatures
-			if systemStats.Temperatures == nil {
-				systemStats.Temperatures = make(map[string]float64, len(gpuData))
-			}
-			highestTemp := 0.0
-			for _, gpu := range gpuData {
-				if gpu.Temperature > 0 {
-					systemStats.Temperatures[gpu.Name] = gpu.Temperature
-					if a.sensorConfig.primarySensor == gpu.Name {
-						a.systemInfo.DashboardTemp = gpu.Temperature
-					}
-					if gpu.Temperature > highestTemp {
-						highestTemp = gpu.Temperature
-					}
-				}
-				// update high gpu percent for dashboard
-				a.systemInfo.GpuPct = max(a.systemInfo.GpuPct, gpu.Usage)
-			}
-			// use highest temp for dashboard temp if dashboard temp is unset
-			if a.systemInfo.DashboardTemp == 0 {
-				a.systemInfo.DashboardTemp = highestTemp
-			}
-		}
-	}
 
 	// update system info
 	a.systemInfo.ConnectionType = a.connectionManager.ConnectionType

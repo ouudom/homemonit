@@ -12,12 +12,9 @@ import (
 	"strings"
 
 	"github.com/henrygd/beszel/internal/alerts"
-	"github.com/henrygd/beszel/internal/hub/config"
-	"github.com/henrygd/beszel/internal/hub/heartbeat"
 	"github.com/henrygd/beszel/internal/hub/systems"
 	"github.com/henrygd/beszel/internal/hub/utils"
 	"github.com/henrygd/beszel/internal/records"
-	"github.com/henrygd/beszel/internal/users"
 
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
@@ -28,11 +25,8 @@ import (
 type Hub struct {
 	core.App
 	*alerts.AlertManager
-	um     *users.UserManager
 	rm     *records.RecordManager
 	sm     *systems.SystemManager
-	hb     *heartbeat.Heartbeat
-	hbStop chan struct{}
 	pubKey string
 	signer ssh.Signer
 	appURL string
@@ -42,27 +36,17 @@ type Hub struct {
 func NewHub(app core.App) *Hub {
 	hub := &Hub{App: app}
 	hub.AlertManager = alerts.NewAlertManager(hub)
-	hub.um = users.NewUserManager(hub)
 	hub.rm = records.NewRecordManager(hub)
 	hub.sm = systems.NewSystemManager(hub)
-	hub.hb = heartbeat.New(app, utils.GetEnv)
-	if hub.hb != nil {
-		hub.hbStop = make(chan struct{})
-	}
 	_ = onAfterBootstrapAndMigrations(app, hub.initialize)
 	return hub
 }
 
 // onAfterBootstrapAndMigrations ensures the provided function runs after the database is set up and migrations are applied.
-// This is a workaround for behavior in PocketBase where onBootstrap runs before migrations, forcing use of onServe for this purpose.
-// However, PB's tests.TestApp is already bootstrapped, generally doesn't serve, but does handle migrations.
-// So this ensures that the provided function runs at the right time either way, after DB is ready and migrations are done.
 func onAfterBootstrapAndMigrations(app core.App, fn func(app core.App) error) error {
-	// pb tests.TestApp is already bootstrapped and doesn't serve
 	if app.IsBootstrapped() {
 		return fn(app)
 	}
-	// Must use OnServe because OnBootstrap appears to run before migrations, even if calling e.Next() before anything else
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		if err := fn(e.App); err != nil {
 			return err
@@ -75,10 +59,6 @@ func onAfterBootstrapAndMigrations(app core.App, fn func(app core.App) error) er
 // StartHub sets up event handlers and starts the PocketBase server
 func (h *Hub) StartHub() error {
 	h.App.OnServe().BindFunc(func(e *core.ServeEvent) error {
-		// sync systems with config
-		if err := config.SyncSystems(e); err != nil {
-			return err
-		}
 		// register middlewares
 		h.registerMiddlewares(e)
 		// register api routes
@@ -97,17 +77,8 @@ func (h *Hub) StartHub() error {
 		if err := h.sm.Initialize(); err != nil {
 			return err
 		}
-		// start heartbeat if configured
-		if h.hb != nil {
-			go h.hb.Start(h.hbStop)
-		}
 		return e.Next()
 	})
-
-	// TODO: move to users package
-	// handle default values for user / user_settings creation
-	h.App.OnRecordCreate("users").BindFunc(h.um.InitializeUserRole)
-	h.App.OnRecordCreate("user_settings").BindFunc(h.um.InitializeUserSettings)
 
 	pb, ok := h.App.(*pocketbase.PocketBase)
 	if !ok {
@@ -136,7 +107,7 @@ func (h *Hub) initialize(app core.App) error {
 
 // registerCronJobs sets up scheduled tasks
 func (h *Hub) registerCronJobs(_ *core.ServeEvent) error {
-	// delete old system_stats and alerts_history records once every hour
+	// delete old system_stats records once every hour
 	h.Cron().MustAdd("delete old records", "8 * * * *", h.rm.DeleteOldRecords)
 	// create longer records every 10 minutes
 	h.Cron().MustAdd("create longer records", "*/10 * * * *", h.rm.CreateLongerRecords)
@@ -166,7 +137,6 @@ func (h *Hub) GetSSHKey(dataDir string) (ssh.Signer, error) {
 		h.pubKey = strings.TrimSuffix(string(pubKeyBytes), "\n")
 		return private, nil
 	} else if !os.IsNotExist(err) {
-		// File exists but couldn't be read for some other reason
 		return nil, fmt.Errorf("failed to read %s: %w", privateKeyPath, err)
 	}
 
@@ -184,7 +154,6 @@ func (h *Hub) GetSSHKey(dataDir string) (ssh.Signer, error) {
 		return nil, fmt.Errorf("failed to write private key to %q: err: %w", privateKeyPath, err)
 	}
 
-	// These are fine to ignore the errors on, as we've literally just created a crypto.PublicKey | crypto.Signer
 	sshPrivate, _ := ssh.NewSignerFromSigner(privKey)
 	pubKeyBytes := ssh.MarshalAuthorizedKey(sshPrivate.PublicKey())
 	h.pubKey = strings.TrimSuffix(string(pubKeyBytes), "\n")
@@ -196,7 +165,6 @@ func (h *Hub) GetSSHKey(dataDir string) (ssh.Signer, error) {
 }
 
 // MakeLink formats a link with the app URL and path segments.
-// Only path segments should be provided.
 func (h *Hub) MakeLink(parts ...string) string {
 	base := strings.TrimSuffix(h.Settings().Meta.AppURL, "/")
 	for _, part := range parts {

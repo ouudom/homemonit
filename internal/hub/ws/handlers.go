@@ -70,3 +70,35 @@ func (ws *WsConn) GetFingerprint(ctx context.Context, token string, signer ssh.S
 	err = ws.handleAgentRequest(req, handler)
 	return result, err
 }
+
+type containerActionHandler struct {
+	result *common.AgentResponse
+}
+
+func (h *containerActionHandler) HandleLegacy(rawData []byte) error {
+	return errors.New("legacy format not supported")
+}
+
+func (h *containerActionHandler) Handle(agentResponse common.AgentResponse) error {
+	*h.result = agentResponse
+	return nil
+}
+
+func (ws *WsConn) ContainerAction(ctx context.Context, containerID string, action string) (string, error) {
+	if !ws.IsConnected() {
+		return "", gws.ErrConnClosed
+	}
+
+	req, err := ws.requestManager.SendRequest(ctx, common.ContainerAction, common.ContainerActionRequest{
+		ContainerID: containerID,
+		Action:      action,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	var result common.AgentResponse
+	handler := &containerActionHandler{result: &result}
+	err = ws.handleAgentRequest(req, handler)
+	return result.Error, err
+}

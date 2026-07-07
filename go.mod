@@ -4,13 +4,10 @@ go 1.26.3
 
 require (
 	github.com/blang/semver v3.5.1+incompatible
-	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/ebitengine/purego v0.10.0
 	github.com/fxamacker/cbor/v2 v2.9.0
-	github.com/gliderlabs/ssh v0.3.8
 	github.com/google/uuid v1.6.0
 	github.com/lxzan/gws v1.9.1
-	github.com/nicholas-fedor/shoutrrr v0.15.1
 	github.com/pocketbase/dbx v1.12.0
 	github.com/pocketbase/pocketbase v0.36.8
 	github.com/shirou/gopsutil/v4 v4.26.3
@@ -22,7 +19,6 @@ require (
 	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90
 	golang.org/x/net v0.55.0
 	golang.org/x/sys v0.45.0
-	gopkg.in/yaml.v3 v3.0.1
 	howett.net/plist v1.0.1
 )
 

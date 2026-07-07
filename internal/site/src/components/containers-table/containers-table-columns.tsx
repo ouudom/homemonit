@@ -11,13 +11,18 @@ import {
 	MemoryStickIcon,
 	ServerIcon,
 	ShieldCheckIcon,
+	PlayIcon,
+	SquareIcon,
+	RotateCwIcon,
+	LoaderCircleIcon,
 } from "lucide-react"
 import { EthernetIcon, HourglassIcon, SquareArrowRightEnterIcon } from "../ui/icons"
 import { Badge } from "../ui/badge"
 import { t } from "@lingui/core/macro"
-import { $allSystemsById, $longestSystemNameLen } from "@/lib/stores"
-import { useStore } from "@nanostores/react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip"
+import { useState } from "react"
+import { pb } from "@/lib/api"
+import { toast } from "../ui/use-toast"
 
 // Unit names and their corresponding number of seconds for converting docker status strings
 const unitSeconds = [
@@ -28,10 +33,10 @@ const unitSeconds = [
 	["w", 604800],
 	["mo", 2592000],
 ] as const
+
 // Convert docker status string to number of seconds ("Up X minutes", "Up X hours", etc.)
 function getStatusValue(status: string): number {
 	const [_, num, unit] = status.split(" ")
-	// Docker uses "a" or "an" instead of "1" for singular units (e.g., "Up a minute", "Up an hour")
 	const numValue = num === "a" || num === "an" ? 1 : Number(num)
 	for (const [unitName, value] of unitSeconds) {
 		if (unit.startsWith(unitName)) {
@@ -39,6 +44,88 @@ function getStatusValue(status: string): number {
 		}
 	}
 	return 0
+}
+
+function ContainerRowActions({ container }: { container: ContainerRecord }) {
+	const [loading, setLoading] = useState<"start" | "stop" | "restart" | null>(null)
+	const isRunning = container.status?.toLowerCase().includes("up")
+
+	async function performAction(action: "start" | "stop" | "restart") {
+		setLoading(action)
+		try {
+			await pb.send("/api/beszel/containers/action", {
+				method: "POST",
+				body: JSON.stringify({
+					system: container.system,
+					container: container.id,
+					action,
+				}),
+			})
+			toast({
+				description: `Container ${action}ed successfully.`,
+			})
+		} catch (e: any) {
+			toast({
+				title: "Action failed",
+				description: e?.message || `Failed to ${action} container.`,
+				variant: "destructive",
+			})
+		} finally {
+			setLoading(null)
+		}
+	}
+
+	return (
+		<div className="flex items-center gap-1">
+			{isRunning ? (
+				<>
+					<Button
+						variant="ghost"
+						size="icon"
+						className="size-7"
+						disabled={loading !== null}
+						onClick={() => performAction("restart")}
+						title="Restart"
+					>
+						{loading === "restart" ? (
+							<LoaderCircleIcon className="size-3.5 animate-spin" />
+						) : (
+							<RotateCwIcon className="size-3.5" />
+						)}
+					</Button>
+					<Button
+						variant="ghost"
+						size="icon"
+						className="size-7 text-destructive hover:text-destructive"
+						disabled={loading !== null}
+						onClick={() => performAction("stop")}
+						title="Stop"
+					>
+						{loading === "stop" ? (
+							<LoaderCircleIcon className="size-3.5 animate-spin" />
+						) : (
+							<SquareIcon className="size-3.5" />
+						)}
+					</Button>
+				</>
+			) : (
+				<Button
+					variant="ghost"
+					size="icon"
+					className="size-7 text-green-500 hover:text-green-500"
+					disabled={loading !== null}
+					onClick={() => performAction("start")}
+					title="Start"
+				>
+					{loading === "start" ? (
+						<LoaderCircleIcon className="size-3.5 animate-spin" />
+					) : (
+						<PlayIcon className="size-3.5" />
+					)}
+				</Button>
+			)}
+		</div>
+	)
 }
 
 export const containerChartCols: ColumnDef<ContainerRecord>[] = [
@@ -51,35 +138,6 @@ export const containerChartCols: ColumnDef<ContainerRecord>[] = [
 			return <span className="ms-1.5 xl:w-48 block truncate">{getValue() as string}</span>
 		},
 	},
-	{
-		id: "system",
-		accessorFn: (record) => record.system,
-		sortingFn: (a, b) => {
-			const allSystems = $allSystemsById.get()
-			const systemNameA = allSystems[a.original.system]?.name ?? ""
-			const systemNameB = allSystems[b.original.system]?.name ?? ""
-			return systemNameA.localeCompare(systemNameB)
-		},
-		header: ({ column }) => <HeaderButton column={column} name={t`System`} Icon={ServerIcon} />,
-		cell: ({ getValue }) => {
-			const allSystems = useStore($allSystemsById)
-			const longestName = useStore($longestSystemNameLen)
-			return (
-				<div className="ms-1 max-w-40 truncate" style={{ width: `${longestName / 1.05}ch` }}>
-					{allSystems[getValue() as string]?.name ?? ""}
-				</div>
-			)
-		},
-	},
-	// {
-	// 	id: "id",
-	// 	accessorFn: (record) => record.id,
-	// 	sortingFn: (a, b) => a.original.id.localeCompare(b.original.id),
-	// 	header: ({ column }) => <HeaderButton column={column} name="ID" Icon={HashIcon} />,
-	// 	cell: ({ getValue }) => {
-	// 		return <span className="ms-1.5 me-3 font-mono">{getValue() as string}</span>
-	// 	},
-	// },
 	{
 		id: "cpu",
 		accessorFn: (record) => record.cpu,
@@ -98,23 +156,7 @@ export const containerChartCols: ColumnDef<ContainerRecord>[] = [
 		cell: ({ getValue }) => {
 			const val = getValue() as number
 			const formatted = formatBytes(val, false, undefined, true)
-			return (
-				<span className="ms-1 tabular-nums">{`${decimalString(formatted.value, formatted.value >= 10 ? 1 : 2)} ${formatted.unit}`}</span>
-			)
-		},
-	},
-	{
-		id: "net",
-		accessorFn: (record) => record.net,
-		invertSorting: true,
-		header: ({ column }) => <HeaderButton column={column} name={t`Net`} Icon={EthernetIcon} />,
-		minSize: 112,
-		cell: ({ getValue }) => {
-			const val = getValue() as number
-			const formatted = formatBytes(val, true, undefined, false)
-			return (
-				<div className="ms-1 tabular-nums">{`${decimalString(formatted.value, formatted.value >= 10 ? 1 : 2)} ${formatted.unit}`}</div>
-			)
+			return <span className="ms-1 tabular-nums">{formatted}</span>
 		},
 	},
 	{
@@ -206,6 +248,14 @@ export const containerChartCols: ColumnDef<ContainerRecord>[] = [
 			return <span className="ms-1 tabular-nums">{hourWithSeconds(new Date(timestamp).toISOString())}</span>
 		},
 	},
+	{
+		id: "actions",
+		header: () => <span className="ps-3">Actions</span>,
+		cell: ({ row }) => {
+			const container = row.original
+			return <ContainerRowActions container={container} />
+		},
+	},
 ]
 
 function HeaderButton({
@@ -229,15 +279,10 @@ function HeaderButton({
 		>
 			{Icon && <Icon className="size-4" />}
 			{name}
-			{/* <ArrowUpDownIcon className="size-4" /> */}
 		</Button>
 	)
 }
 
-/**
- * Convert port string to a number for sorting.
- * Handles formats like "80", "127.0.0.1:80", and "80, 443" (takes the first mapping).
- */
 function getPortValue(ports: string | undefined): number {
 	if (!ports) {
 		return 0

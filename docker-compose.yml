@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  homemonit:
+    image: ouudom/homemonit:latest
+    container_name: homemonit
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    environment:
+      - PORT=8090
+      - TELEGRAM_BOT_TOKEN=your_bot_token_here
+      - TELEGRAM_CHAT_ID=your_chat_id_here
+    volumes:
+      - homemonit_data:/pb_data
+
+  homemonit-agent:
+    image: ouudom/homemonit-agent:latest
+    container_name: homemonit-agent
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - PORT=45876
+      - KEY=your_agent_connection_token_here
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /:/host:ro
+
+volumes:
+  homemonit_data:

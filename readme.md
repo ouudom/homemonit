@@ -1,70 +1,80 @@
-# Beszel
+# HomeMonit
 
-Beszel is a lightweight server monitoring platform that includes Docker statistics, historical data, and alert functions.
+HomeMonit is a lightweight, single-server system and container monitoring dashboard fork of [Beszel](https://github.com/henrygd/beszel). 
 
-It has a friendly web interface, simple configuration, and is ready to use out of the box. It supports automatic backup, multi-user, OAuth authentication, and API access.
-
-[![agent Docker Image Size](https://img.shields.io/docker/image-size/henrygd/beszel-agent/latest?logo=docker&label=agent%20image%20size)](https://hub.docker.com/r/henrygd/beszel-agent)
-[![hub Docker Image Size](https://img.shields.io/docker/image-size/henrygd/beszel/latest?logo=docker&label=hub%20image%20size)](https://hub.docker.com/r/henrygd/beszel)
-[![MIT license](https://img.shields.io/github/license/henrygd/beszel?color=%239944ee)](https://github.com/henrygd/beszel/blob/main/LICENSE)
-[![Crowdin](https://badges.crowdin.net/beszel/localized.svg)](https://crowdin.com/project/beszel)
-
-![Screenshot of Beszel dashboard and system page, side by side. The dashboard shows metrics from multiple connected systems, while the system page shows detailed metrics for a single system.](https://henrygd-assets.b-cdn.net/beszel/screenshot-new.png)
+It has been optimized and stripped down specifically to host on a single homeserver. It features a simplified layout, native Telegram thresholds alerts, WebSocket-only communication between the agent and hub, and consumes minimal resources.
 
 ## Features
 
-- **Lightweight**: Smaller and less resource-intensive than leading solutions.
-- **Simple**: Easy setup with little manual configuration required.
-- **Docker stats**: Tracks CPU, memory, and network usage history for each container.
-- **Alerts**: Configurable alerts for CPU, memory, disk, bandwidth, temperature, load average, and status.
-- **Multi-user**: Users manage their own systems. Admins can share systems across users.
-- **OAuth / OIDC**: Supports many OAuth2 providers. Password auth can be disabled.
-- **Automatic backups**: Save to and restore from disk or S3-compatible storage.
-<!-- - **REST API**: Use or update your data in your own scripts and applications. -->
+- **Core Metrics**: Real-time CPU, Memory, Disk, and Network stats.
+- **Docker/Podman Containers**: View container list and resource usage (CPU/Memory/Network charts per container).
+- **Outbound-only WebSockets**: The agent establishes a secure WebSocket connection to the hub (no listening ports or SSH fallback needed on the agent).
+- **Native Telegram Alerts**: Configure threshold alerts (CPU, Memory, Disk) and status alerts (Up/Down) sent directly to your Telegram chat.
+- **Single Admin View**: Bypasses complex user/settings management, rendering your server's stats directly on the main page.
+- **Ultra-lightweight**: No complex multi-user setups, OAuth logins, SMART, ZFS ARC, systemd services, or GPU monitoring.
 
-## Architecture
+## Getting Started
 
-Beszel consists of two main components: the **hub** and the **agent**.
+### 1. Deploy with Docker Compose
 
-- **Hub**: A web application built on [PocketBase](https://pocketbase.io/) that provides a dashboard for viewing and managing connected systems.
-- **Agent**: Runs on each system you want to monitor and communicates system metrics to the hub.
+Create a `docker-compose.yml` file as follows:
 
-## Getting started
+```yaml
+version: '3.8'
 
-The [quick start guide](https://beszel.dev/guide/getting-started) and other documentation is available on our website, [beszel.dev](https://beszel.dev). You'll be up and running in a few minutes.
+services:
+  homemonit:
+    image: ouudom/homemonit:latest
+    container_name: homemonit
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    environment:
+      - PORT=8090
+      - TELEGRAM_BOT_TOKEN=your_bot_token_here
+      - TELEGRAM_CHAT_ID=your_chat_id_here
+    volumes:
+      - homemonit_data:/pb_data
 
-## Screenshots
+  homemonit-agent:
+    image: ouudom/homemonit-agent:latest
+    container_name: homemonit-agent
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - PORT=45876
+      - KEY=your_agent_connection_token_here
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /:/host:ro
 
-![Dashboard](https://beszel.dev/image/dashboard.png)
-![System page](https://beszel.dev/image/system-full.png)
-![Notification Settings](https://beszel.dev/image/settings-notifications.png)
+volumes:
+  homemonit_data:
+```
 
-## Supported metrics
+### 2. Configuration Env Vars
 
-- **CPU usage** - Host system and Docker / Podman containers.
-- **Memory usage** - Host system and containers. Includes swap and ZFS ARC.
-- **Disk usage** - Host system. Supports multiple partitions and devices.
-- **Disk I/O** - Host system. Supports multiple partitions and devices.
-- **Network usage** - Host system and containers.
-- **Load average** - Host system.
-- **Temperature** - Host system sensors.
-- **GPU usage / power draw** - Nvidia, AMD, and Intel.
-- **Battery** - Host system battery charge.
-- **Containers** - Status and metrics of all running Docker / Podman containers.
-- **S.M.A.R.T.** - Host system disk health (includes eMMC wear/EOL and Linux mdraid array health via sysfs when available).
+- **Hub (`homemonit`)**:
+  - `TELEGRAM_BOT_TOKEN`: The bot token obtained from `@BotFather`.
+  - `TELEGRAM_CHAT_ID`: Your personal Telegram Chat ID (can be fetched using `@userinfobot`).
+- **Agent (`homemonit-agent`)**:
+  - `KEY`: The authentication token (must match the token stored in the `port` field of the system record).
 
-## Help and discussion
+## Building from Source
 
-Please search existing issues and discussions before opening a new one. I try my best to respond, but may not always have time to do so.
+### Frontend
+```bash
+cd internal/site
+npm install
+npm run build
+```
 
-#### Bug reports and feature requests
+### Hub and Agent Go binaries
+```bash
+make
+```
 
-Bug reports and feature requests can be posted on [GitHub issues](https://github.com/henrygd/beszel/issues).
+## Credits
 
-#### Support and general discussion
-
-Support requests and general discussion can be posted on [GitHub discussions](https://github.com/henrygd/beszel/discussions) or the community-run [Matrix room](https://matrix.to/#/#beszel:matrix.org): `#beszel:matrix.org`.
-
-## License
-
-Beszel is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
+- Forked from [Beszel](https://github.com/henrygd/beszel) by henrygd.
+- Powered by [PocketBase](https://pocketbase.io/).

@@ -1,6 +1,8 @@
 package migrations
 
 import (
+	"encoding/json"
+
 	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
 )
@@ -1702,7 +1704,26 @@ func init() {
 	}
 ]`
 
-		err := app.ImportCollectionsByMarshaledJSON([]byte(jsonData), false)
+		var collections []map[string]any
+		if err := json.Unmarshal([]byte(jsonData), &collections); err != nil {
+			return err
+		}
+		var filteredCollections []map[string]any
+		for _, col := range collections {
+			name, ok := col["name"].(string)
+			if !ok {
+				continue
+			}
+			if name == "alerts_history" || name == "smart_devices" || name == "systemd_services" || name == "universal_tokens" || name == "quiet_hours" || name == "fingerprints" {
+				continue
+			}
+			filteredCollections = append(filteredCollections, col)
+		}
+		filteredJSON, err := json.Marshal(filteredCollections)
+		if err != nil {
+			return err
+		}
+		err = app.ImportCollectionsByMarshaledJSON(filteredJSON, false)
 		if err != nil {
 			return err
 		}

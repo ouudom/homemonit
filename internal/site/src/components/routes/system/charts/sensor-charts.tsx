@@ -1,6 +1,4 @@
 import { t } from "@lingui/core/macro"
-import AreaChartDefault from "@/components/charts/area-chart"
-import { batteryStateTranslations } from "@/lib/i18n"
 import { $temperatureFilter, $userSettings } from "@/lib/stores"
 import { cn, decimalString, formatTemperature, toFixedFloat } from "@/lib/utils"
 import type { ChartData, SystemStatsRecord } from "@/types"
@@ -9,50 +7,8 @@ import LineChartDefault from "@/components/charts/line-chart"
 import { useStore } from "@nanostores/react"
 import { useRef, useMemo, useState, useEffect } from "react"
 
-export function BatteryChart({
-	chartData,
-	grid,
-	dataEmpty,
-	maxValues,
-}: {
-	chartData: ChartData
-	grid: boolean
-	dataEmpty: boolean
-	maxValues: boolean
-}) {
-	const showBatteryChart = chartData.systemStats.at(-1)?.stats.bat
-
-	if (!showBatteryChart) {
-		return null
-	}
-
-	return (
-		<ChartCard
-			empty={dataEmpty}
-			grid={grid}
-			title={t`Battery`}
-			description={`${t({
-				message: "Current state",
-				comment: "Context: Battery state",
-			})}: ${batteryStateTranslations[chartData.systemStats.at(-1)?.stats.bat?.[1] ?? 0]()}`}
-		>
-			<AreaChartDefault
-				chartData={chartData}
-				maxToggled={maxValues}
-				dataPoints={[
-					{
-						label: t`Charge`,
-						dataKey: ({ stats }) => stats?.bat?.[0],
-						color: 1,
-						opacity: 0.35,
-					},
-				]}
-				domain={[0, 100]}
-				tickFormatter={(val) => `${val}%`}
-				contentFormatter={({ value }) => `${value}%`}
-			/>
-		</ChartCard>
-	)
+export function BatteryChart() {
+	return null
 }
 
 export function TemperatureChart({
@@ -74,7 +30,6 @@ export function TemperatureChart({
 	const statsRef = useRef(chartData.systemStats)
 	statsRef.current = chartData.systemStats
 
-	// Derive sensor names key from latest data point
 	let sensorNamesKey = ""
 	for (let i = chartData.systemStats.length - 1; i >= 0; i--) {
 		const t = chartData.systemStats[i].stats?.t
@@ -84,7 +39,6 @@ export function TemperatureChart({
 		}
 	}
 
-	// Only recompute colors and dataKey functions when sensor names change
 	const { colorMap, dataKeys, sortedKeys } = useMemo(() => {
 		const stats = statsRef.current
 		const tempSums = {} as Record<string, number>
@@ -125,20 +79,6 @@ export function TemperatureChart({
 			}
 		})
 	}, [sortedKeys, filter, dataKeys, colorMap])
-
-	// test with lots of data points
-	// const totalPoints = 50
-	// if (dataPoints.length > 0 && dataPoints.length < totalPoints) {
-	// 	let i = 0
-	// 	while (dataPoints.length < totalPoints) {
-	// 		dataPoints.push({
-	// 			label: `Test ${++i}`,
-	// 			dataKey: () => 0,
-	// 			color: "red",
-	// 			strokeOpacity: 1,
-	// 		})
-	// 	}
-	// }
 
 	const chartRef = useRef<HTMLDivElement>(null)
 	const [addMargin, setAddMargin] = useState(false)

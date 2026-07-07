@@ -22,7 +22,8 @@ const (
 	GetSmartData
 	// Request detailed systemd service info from agent
 	GetSystemdInfo
-	// Add new actions here...
+	// Perform action on a container (start, stop, restart)
+	ContainerAction
 )
 
 // HubRequest defines the structure for requests sent from hub to agent.
@@ -73,4 +74,9 @@ type ContainerInfoRequest struct {
 
 type SystemdInfoRequest struct {
 	ServiceName string `cbor:"0,keyasint"`
+}
+
+type ContainerActionRequest struct {
+	ContainerID string `cbor:"0,keyasint"`
+	Action      string `cbor:"1,keyasint"`
 }

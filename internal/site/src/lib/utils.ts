@@ -7,7 +7,7 @@ import { twMerge } from "tailwind-merge"
 import { toast } from "@/components/ui/use-toast"
 import type { ChartTimeData, FingerprintRecord, SemVer, SystemRecord } from "@/types"
 import { HourFormat, Unit } from "./enums"
-import { $copyContent, $userSettings } from "./stores"
+import { $userSettings } from "./stores"
 
 export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs))
@@ -28,7 +28,7 @@ export async function copyToClipboard(content: string) {
 			description: t`Copied to clipboard`,
 		})
 	} catch (_e) {
-		$copyContent.set(content)
+		console.error("Clipboard copy failed", _e)
 	}
 }
 

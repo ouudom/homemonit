@@ -6,9 +6,9 @@ import "github.com/blang/semver"
 
 const (
 	// Version is the current version of the application.
-	Version = "0.18.7"
+	Version = "0.1.0"
 	// AppName is the name of the application.
-	AppName = "beszel"
+	AppName = "homemonit"
 )
 
 // MinVersionCbor is the minimum supported version for CBOR compatibility.
