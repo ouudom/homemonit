@@ -3,8 +3,6 @@ package systems
 import (
 	"errors"
 	"fmt"
-	"time"
-
 	"github.com/henrygd/beszel/internal/hub/ws"
 	"github.com/henrygd/beszel/internal/entities/system"
 	"github.com/blang/semver"
