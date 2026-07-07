@@ -1,12 +1,12 @@
-version: '3.8'
-
 services:
   homemonit:
-    image: ouudom/homemonit:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: homemonit
     restart: unless-stopped
     ports:
-      - "8090:8090"
+      - "8099:8090"
     environment:
       - PORT=8090
       - TELEGRAM_BOT_TOKEN=your_bot_token_here
@@ -15,7 +15,9 @@ services:
       - homemonit_data:/pb_data
 
   homemonit-agent:
-    image: ouudom/homemonit-agent:latest
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
     container_name: homemonit-agent
     restart: unless-stopped
     network_mode: host
